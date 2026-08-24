@@ -1,0 +1,8 @@
+pandas
+numpy
+xgboost
+python-binance
+ta
+requests
+joblib
+scikit-learn
