@@ -2,8 +2,7 @@ import os
 import joblib
 import requests
 import pandas as pd
-
-from binance.client import Client
+import yfinance as yf
 
 from ta.momentum import RSIIndicator, StochasticOscillator
 from ta.trend import MACD, ADXIndicator
@@ -13,24 +12,26 @@ from ta.volatility import BollingerBands, AverageTrueRange
 model = joblib.load("btc_xgb_model_v3.pkl")
 features = joblib.load("btc_features.pkl")
 
-# Telegram secrets
+# Telegram Secrets
 TOKEN = os.environ["TELEGRAM_TOKEN"]
 CHAT_ID = os.environ["CHAT_ID"]
 
-# Binance
-client = Client()
+print("Downloading BTC data...")
 
-# Download latest candles
-klines = client.get_klines(
-    symbol="BTCUSDT",
-    interval=Client.KLINE_INTERVAL_15MINUTE,
-    limit=100
+# Download BTC data from Yahoo Finance
+df = yf.download(
+    tickers="BTC-USD",
+    period="7d",
+    interval="15m",
+    auto_adjust=True,
+    progress=False
 )
 
-# Build dataframe
-df = pd.DataFrame(klines)
+# Reset index
+df = df.reset_index()
 
-df = df.iloc[:, :6]
+# Rename columns
+df = df[["Datetime", "Open", "High", "Low", "Close", "Volume"]]
 
 df.columns = [
     "Time",
@@ -41,8 +42,9 @@ df.columns = [
     "Volume"
 ]
 
+# Convert numeric columns
 for col in ["Open", "High", "Low", "Close", "Volume"]:
-    df[col] = df[col].astype(float)
+    df[col] = pd.to_numeric(df[col], errors="coerce")
 
 # Indicators
 df["MA20"] = df["Close"].rolling(20).mean()
@@ -92,7 +94,11 @@ stoch = StochasticOscillator(
 
 df["STOCH"] = stoch.stoch()
 
+# Remove empty rows
 df = df.dropna()
+
+print("Features expected by model:")
+print(features)
 
 latest_live = df[features].tail(1)
 
@@ -124,10 +130,13 @@ print(message)
 
 url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
 
-requests.post(
+response = requests.post(
     url,
     data={
         "chat_id": CHAT_ID,
         "text": message
     }
 )
+
+print("Telegram Status:", response.status_code)
+print("Telegram Response:", response.text)
